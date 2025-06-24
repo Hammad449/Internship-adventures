@@ -1,25 +1,25 @@
-import java.sql.*;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+import model.Payment;
 import java.io.*;
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
 
-    private static final String URL = "jdbc:mysql://localhost:3306/db";
-    private static final String USER = "root";
-    private static final String PASSWORD = "root#123";
-
     public static void main(String[] args) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
-             Scanner scanner = new Scanner(System.in)) {
+        try (Scanner scanner = new Scanner(System.in)) {
+            Session session = HibernateUtil.getSessionFactory().openSession();
+            Transaction tx = session.beginTransaction();
 
-            System.out.println("Connected to MySQL!");
+            System.out.println("Connected to MySQL via Hibernate!");
 
-            // Step 1: Create the table if it doesn't exist
-            executeSqlFile(conn, "src/create_table.sql");
+            // Step 1: Hibernate auto-creates the table
 
             // Step 2: Insert from CSV
-            String filePath = "payments.csv";
-            readFromFileAndInsert(conn, filePath);
+            readFromFileAndInsert(session, "payments.csv");
+
+            tx.commit();
 
             // Step 3: Search loop
             while (true) {
@@ -29,35 +29,14 @@ public class Main {
                     System.out.println("Exiting.");
                     break;
                 }
-                getPaymentByName(conn, input);
+                getPaymentByName(session, input);
             }
 
-        } catch (SQLException e) {
-            e.printStackTrace();
+            session.close();
         }
     }
 
-    // Reads and executes SQL commands from a file
-    private static void executeSqlFile(Connection conn, String filePath) {
-        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
-            StringBuilder sqlBuilder = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                sqlBuilder.append(line).append("\n");
-            }
-
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute(sqlBuilder.toString());
-                System.out.println("Table check/creation complete.");
-            }
-
-        } catch (IOException | SQLException e) {
-            System.err.println("Error executing SQL file: " + e.getMessage());
-        }
-    }
-
-    // CSV reader
-    private static void readFromFileAndInsert(Connection conn, String filePath) {
+    private static void readFromFileAndInsert(Session session, String filePath) {
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -66,45 +45,48 @@ public class Main {
                     String name = parts[0].trim();
                     double owed = Double.parseDouble(parts[1].trim());
                     double paid = Double.parseDouble(parts[2].trim());
-                    addPaymentRow(conn, name, owed, paid);
+
+                    // Check for existing name
+                    List<Payment> existing = session
+                            .createQuery("FROM Payment WHERE name = :name", Payment.class)
+                            .setParameter("name", name)
+                            .getResultList();
+
+                    if (existing.isEmpty()) {
+                        Payment payment = new Payment();
+                        payment.setName(name);
+                        payment.setAmountOwed(owed);
+                        payment.setAmountPaid(paid);
+
+                        session.persist(payment);
+                        System.out.println("Inserted: " + name);
+                    } else {
+                        System.out.println("Skipped duplicate: " + name);
+                    }
                 } else {
                     System.out.println("Skipped invalid line: " + line);
                 }
             }
-        } catch (IOException | SQLException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void addPaymentRow(Connection conn, String name, double amountOwed, double amountPaid) throws SQLException {
-        String sql = "INSERT IGNORE INTO payments (name, amount_owed, amount_paid) VALUES (?, ?, ?)";
-        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, name);
-            pstmt.setDouble(2, amountOwed);
-            pstmt.setDouble(3, amountPaid);
-            pstmt.executeUpdate();
-            System.out.println("Inserted: " + name);
-        }
-    }
 
-    private static void getPaymentByName(Connection conn, String name) throws SQLException {
-        String sql = "SELECT * FROM payments WHERE name = ?";
-        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, name);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                boolean found = false;
-                while (rs.next()) {
-                    found = true;
-                    double owed = rs.getDouble("amount_owed");
-                    double paid = rs.getDouble("amount_paid");
-                    System.out.println("\n--- Payment Info ---");
-                    System.out.println("Name: " + name);
-                    System.out.println("Amount Owed: " + owed);
-                    System.out.println("Amount Paid: " + paid);
-                }
-                if (!found) {
-                    System.out.println("No records found for name: " + name);
-                }
+    private static void getPaymentByName(Session session, String name) {
+        List<Payment> results = session
+                .createQuery("FROM Payment WHERE name = :name", Payment.class)
+                .setParameter("name", name)
+                .getResultList();
+
+        if (results.isEmpty()) {
+            System.out.println("No records found for name: " + name);
+        } else {
+            for (Payment p : results) {
+                System.out.println("\n--- Payment Info ---");
+                System.out.println("Name: " + p.getName());
+                System.out.println("Amount Owed: " + p.getAmountOwed());
+                System.out.println("Amount Paid: " + p.getAmountPaid());
             }
         }
     }

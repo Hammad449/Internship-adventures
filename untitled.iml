@@ -18,6 +18,13 @@
         </descriptors>
       </configuration>
     </facet>
+    <facet type="hibernate" name="Hibernate">
+      <configuration>
+        <datasource-map />
+        <naming-strategy-map />
+        <deploymentDescriptor name="hibernate.cfg.xml" url="file://$MODULE_DIR$/src/hibernate.cfg.xml" />
+      </configuration>
+    </facet>
   </component>
   <component name="NewModuleRootManager" inherit-compiler-output="true">
     <exclude-output />
@@ -26,7 +33,8 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="groovy-5.0.0-alpha-1" level="project" />
     <orderEntry type="library" name="mysql.connector.java" level="project" />
+    <orderEntry type="library" name="hibernate.orm.core" level="project" />
+    <orderEntry type="library" name="jakarta.persistence.api" level="project" />
   </component>
 </module>
